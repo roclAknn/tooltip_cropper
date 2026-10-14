@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ツールチップ自動切り抜きツール</title>
+<style>
+:root{
+  --bg:#f4f7fb; --card:#fff; --line:#dbe3ee; --text:#243042; --sub:#6b7a90;
+  --accent:#3b82f6; --accent-d:#2563eb; --danger:#ef4444; --ok:#16a34a;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI",Meiryo,sans-serif;line-height:1.6}
+/* 左ナビ */
+#nav{position:fixed;left:0;top:0;bottom:0;width:150px;padding:16px 10px;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:6px;z-index:50;overflow-y:auto}
+#nav .ttl{font-size:12px;color:var(--sub);margin:0 4px 4px}
+#nav button{text-align:left;padding:8px 10px;border:1px solid transparent;background:#eef3fb;color:var(--text);border-radius:8px;cursor:pointer;font-size:13px}
+#nav button:hover{background:#dce8fb;border-color:#bfd4f8}
+main{margin-left:170px;padding:24px 20px 80px;max-width:1000px}
+h1{font-size:22px;margin:0 0 4px}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px;scroll-margin-top:12px}
+section h2{font-size:16px;margin:0 0 10px;padding-left:10px;border-left:4px solid var(--accent)}
+.note{color:var(--sub);font-size:13px}
+.warn{color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:6px 10px;font-size:13px;margin-top:8px}
+button.btn,label.btn{display:inline-block;padding:8px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;cursor:pointer;font-size:14px}
+button.btn:hover,label.btn:hover{background:var(--accent-d)}
+button.btn.sub{background:#fff;color:var(--accent)}
+button.btn.sub:hover{background:#eef4ff}
+button.btn.danger{background:#fff;color:var(--danger);border-color:var(--danger)}
+button.btn.danger:hover{background:#fef2f2}
+button.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:6px 0}
+input[type=text],input[type=number],select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:14px;background:#fff;color:var(--text)}
+#dropzone{border:2px dashed #aac3ea;border-radius:12px;background:#f3f8ff;padding:28px 12px;text-align:center;cursor:pointer;color:var(--sub)}
+#dropzone:hover{background:#e9f2ff}
+#dropzone b{color:var(--text)}
+#dropCover{position:fixed;inset:0;background:rgba(59,130,246,.18);border:4px dashed var(--accent);z-index:90;display:none;align-items:center;justify-content:center;font-size:28px;color:var(--accent-d);font-weight:700;pointer-events:none}
+#dropCover.on{display:flex}
+#viewWrap{background:#e9eef5;border-radius:8px;padding:8px;text-align:center;min-height:60px}
+#view{max-width:100%;height:auto;display:none;margin:0 auto}
+#viewEmpty{color:var(--sub);padding:18px}
+#mergeWrap{position:relative;background:#e9eef5;border-radius:8px;padding:8px;height:420px;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}
+#mergeCanvas{display:none;max-width:100%;max-height:100%;width:auto;height:auto}
+.stat{font-size:14px}
+.stat b{color:var(--accent-d)}
+/* リスト */
+#list{display:flex;flex-direction:column;gap:8px}
+.item{display:flex;gap:10px;align-items:stretch;background:#fafcff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;transition:background .15s,border-color .15s}
+.item .body{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.item .fname{flex:1 1 150px;min-width:0}
+.item .tag,.item .acts,.item .num,.item input[type=checkbox]{flex:none}
+.item .num{min-width:26px}
+.item input[type=checkbox]{width:18px;height:18px;cursor:pointer}
+.item .acts{display:flex;gap:6px}
+.item.off{background:#eceff3;border-color:#d3d9e2}
+.item.off .thumb{opacity:.4;filter:grayscale(.7)}
+.item.off .num,.item.off .tag,.item.off .fname{opacity:.55}
+.item.ph{background:#eef4ff;border-color:transparent;outline:2px dashed var(--accent);outline-offset:-2px}
+.item.ph>*{visibility:hidden}
+.item.ghost{position:fixed;margin:0;opacity:.6;pointer-events:none;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.28);background:#eaf2ff;border-color:var(--accent)}
+body.is-dragging{user-select:none;-webkit-user-select:none;-moz-user-select:none;cursor:grabbing}
+body.is-dragging *{cursor:grabbing!important}
+.handle{cursor:grab;touch-action:none;width:28px;flex:none;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--sub);user-select:none;-webkit-user-select:none;line-height:1;border-radius:6px}
+.handle:hover{background:#e6eefb}
+.handle:active{cursor:grabbing}
+.num{text-align:center;font-weight:700;color:var(--accent-d)}
+.thumb{width:200px;height:100px;flex:none;background:#1c2430;border-radius:4px;overflow:hidden;display:flex;cursor:pointer;transition:opacity .15s,filter .15s}
+.thumb canvas{flex:none;display:block;margin:auto;max-width:none;max-height:none}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;text-align:center}
+.tag.eq{background:#fde8e8;color:#b91c1c}
+.tag.it{background:#e0f2e9;color:#15803d}
+.fname{font-size:12px;color:var(--sub);word-break:break-all}
+.fname .dt{color:var(--text);font-size:13px}
+.item .ibtn{width:36px;height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.item .ibtn svg{width:20px;height:20px;display:block;pointer-events:none}
+#empty{color:var(--sub);text-align:center;padding:20px}
+/* 処理中・トースト */
+#busy{position:fixed;inset:0;background:rgba(255,255,255,.65);z-index:100;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-size:16px}
+#busy.on{display:flex}
+.spin{width:42px;height:42px;border:5px solid #cfe0fb;border-top-color:var(--accent);border-radius:50%;animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#243042;color:#fff;padding:9px 18px;border-radius:8px;z-index:110;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;display:flex;flex-direction:column;align-items:center;gap:8px}
+#toast canvas{display:block;max-width:100%;background:#1c2430;border-radius:4px}
+#toast.on{opacity:.95}
+#mergeBusy{position:absolute;left:0;top:0;right:0;bottom:0;background:rgba(233,238,245,.72);color:var(--accent-d);font-size:15px;font-weight:700;display:none;align-items:center;justify-content:center;gap:10px;z-index:2}
+#mergeBusy .spin{width:22px;height:22px;border-width:3px}
+@media (max-width:820px){
+  #nav{top:auto;width:auto;right:0;bottom:0;flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:6px;overflow-x:auto}
+  #nav .ttl{display:none}
+  #nav button{white-space:nowrap}
+  main{margin-left:0;padding-bottom:90px}
+
+
+}
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="ttl">ナビゲーション</div>
+  <button data-go="sec-about">トップ</button>
+  <button data-go="sec-capture">キャプチャ</button>
+  <button data-go="sec-wm">透かし文字</button>
+  <button data-go="sec-merge">マージ</button>
+  <button data-go="sec-list">画像リスト</button>
+</nav>
+
+<main>
+  <section id="sec-about">
+    <h1>ツールチップ自動切り抜きツール</h1>
+    <p style="margin:6px 0">メイプルストーリーのSSから装備やアイテムのツールチップ画像を自動で認識し、切り取って並べるツールです。</p>
+    <p class="note" style="margin:0">画像や入力内容はブラウザで処理され送信されません。IDパスワードなどは映らないようにしてください。</p>
+    <div id="initWarn" class="warn" style="display:none"></div>
+  </section>
+
+  <section id="sec-capture" style="display: flex; flex-direction: column; gap: 32px;">
+    <div>
+      <h2>スクリーンショットの貼り付け</h2>
+      <div id="dropzone" tabindex="0">
+        <b>スクリーンショットをドラッグ＆ドロップ（ページのどこでもOK）</b><br>
+        <span class="note">Ctrl+V で貼り付け　／　クリックでファイル選択</span>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+    </div>
+
+    <div>
+      <h2>画面キャプチャ</h2>
+      <div class="row">
+        <button class="btn" id="capBtn">キャプチャ開始</button>
+        <span class="stat" id="capState">停止中</span>
+      </div>
+      <p class="note" style="margin:4px 0 0">
+        ゲーム画面（ウィンドウ）を選んで開始します。<br/>
+        <b>このページがアクティブな状態でスペースキー</b> を押すと切り抜いてリストに追加します。<br/>
+        ツールチップが認識されるとプレビュー内に枠が表示されます
+      </p>
+      <video id="vid" muted playsinline style="position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0"></video>
+    </div>
+
+    <div>
+      <h2>スクリーンショット／キャプチャ プレビュー</h2>
+      <div id="viewWrap">
+        <div id="viewEmpty">画像がありません</div>
+        <canvas id="view"></canvas>
+      </div>
+      <p class="note" style="margin:6px 0 0" id="viewInfo"></p>
+    </div>
+  </section>
+    
+
+  <section id="sec-wm">
+    <h2>透かし文字設定</h2>
+    <div class="row">
+      <label><input type="checkbox" id="wmOn"> 透かしを入れる</label>
+      <input type="text" id="wmText" placeholder="例: @username" maxlength="40" style="width:220px">
+      <label>濃さ <input type="range" id="wmAlpha" min="8" max="60" value="24"></label>
+    </div>
+    <p class="note" style="margin:0">各クロップ画像に薄く斜めに入ります<br/>マージのプレビューで確認してください。個別の画像にもダウンロード時に入ります。</p>
+  </section>
+
+  <section id="sec-merge">
+    <h2>マージツール（切り抜いた画像を自動合成）</h2>
+    <div class="row">
+      <label>配置 <select id="mergeSel" style="min-width:150px"></select></label>
+      <label>空白の色 <input type="color" id="mergeBg" value="#ffffff"></label>
+      <label>間隔 <input type="number" id="mergeGap" value="0" min="0" max="50" style="width:70px"> px</label>
+    </div>
+    <p class="note" style="margin:0 0 8px">チェックを入れた画像を、リストの並び順で縦×横の表状に並べます。</p>
+    <div id="mergeWrap"><div id="mergeBusy"><div class="spin"></div>更新中…</div><div id="mergeEmpty" class="note" style="padding:14px">チェックされた画像がありません</div><canvas id="mergeCanvas"></canvas></div>
+    <div class="row">
+      <button class="btn" id="mergeDl" disabled>マージ画像をダウンロード</button>
+      <span class="note" id="mergeInfo"></span>
+    </div>
+  </section>
+
+  <section id="sec-list">
+    <h2>クロップ画像リスト</h2>
+    <div style="margin-bottom: 32px">
+      <div class="row stat">
+        <span>件数 <b id="cntAll">0</b> / <span id="cntMax">40</span></span>
+        <span>選択 <b id="cntSel">0</b> 件</span>
+      </div>
+      <div class="row">
+        <button class="btn sub" id="selAll">全選択</button>
+        <button class="btn sub" id="selNone">全解除</button>
+        <button class="btn" id="zipBtn" disabled>選択画像をZIPでダウンロード</button>
+        <button class="btn danger" id="delSel" disabled>選択画像を削除</button>
+        <button class="btn danger" id="delAll" disabled>全削除</button>
+      </div>
+    </div>
+    <div>
+      <p class="note" style="margin:0 0 8px">左端のツマミ（⋮⋮）をつかんで並べ替えできます。この順番がマージの順番になります。</p>
+      <div id="list"></div>
+      <div id="empty">まだ画像がありません</div>
+    </div>
+  </section>
+</main>
+
+<div id="dropCover">ドロップして追加</div>
+<div id="busy"><div class="spin"></div><div id="busyMsg">処理中…</div></div>
+<div id="toast"></div>
+
+<script src="detectTooltips.js"></script>
+<script>
+(() => {
+'use strict';
+const MAX_ITEMS = 40;
+const $ = id => document.getElementById(id);
+const pad = (n, l = 2) => String(n).padStart(l, '0');
+
+/* ---------- 共通UI ---------- */
+let toastTimer = 0;
+function toast(msg, cv) {
+  const t = $('toast'); t.textContent = '';
+  if (cv && cv.width && cv.height) {
+    const k = Math.min(1, 320 / cv.width, 140 / cv.height);
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(cv.width * k)); c.height = Math.max(1, Math.round(cv.height * k));
+    const g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
+    g.drawImage(cv, 0, 0, c.width, c.height);
+    t.appendChild(c);
+  }
+  const m = document.createElement('div'); m.textContent = msg; t.appendChild(m);
+  t.classList.add('on');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), cv ? 3000 : 2400);
+}
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+async function withBusy(msg, fn) {
+  $('busyMsg').textContent = msg; $('busy').classList.add('on');
+  await nextFrame();
+  try { return await fn(); }
+  finally { $('busy').classList.remove('on'); }
+}
+function stamp(d = new Date()) {
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+function fmtDate(d) {
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+const toBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ナビ */
+document.querySelectorAll('#nav button').forEach(b =>
+  b.addEventListener('click', () => $(b.dataset.go).scrollIntoView({ behavior: 'smooth', block: 'start' })));
+
+/* 判定用画像の読込状況 */
+(async () => {
+  try {
+    await ItemTooltipChecker.init();
+    const bad = ItemTooltipChecker.defaultOptions.sides.filter(s => !s.rgba || s.rgba.length === 0);
+    if (bad.length) {
+      const w = $('initWarn');
+      w.style.display = 'block';
+      w.textContent = 'アイテム判定用の枠線画像（' + bad.map(s => s.path).join(', ') + '）を読み込めていません。' +
+        'images フォルダを置き、file:// ではなくWebサーバ経由（http://）で開いてください。それまでアイテムは判定できません（装備のみ）。';
+    }
+  } catch (e) { console.error(e); }
+})();
+
+/* ---------- 透かし ---------- */
+const wm = { get on() { return $('wmOn').checked && $('wmText').value.trim() !== ''; },
+             get text() { return $('wmText').value.trim(); },
+             get alpha() { return $('wmAlpha').value / 100; } };
+function withWatermark(src) {
+  if (!wm.on) return src;
+  const w = src.width, h = src.height;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.drawImage(src, 0, 0);
+  const fs = Math.max(10, Math.min(28, Math.round(Math.sqrt(w * h) / 16)));
+  g.font = `bold ${fs}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineJoin = 'round';
+  g.fillStyle = `rgba(255,255,255,${wm.alpha})`;
+  g.strokeStyle = `rgba(0,0,0,${wm.alpha})`;
+  g.lineWidth = Math.max(1, fs / 9);
+  const tw = g.measureText(wm.text).width;
+  const sx = tw + fs * 3, sy = fs * 4.5, diag = Math.hypot(w, h);
+  g.save(); g.translate(w / 2, h / 2); g.rotate(-Math.PI / 9);
+  let r = 0;
+  for (let y = -diag / 2; y <= diag / 2; y += sy, r++) {
+    for (let x = -diag / 2 + (r % 2) * sx / 2; x <= diag / 2; x += sx) {
+      g.strokeText(wm.text, x, y); g.fillText(wm.text, x, y);
+    }
+  }
+  g.restore();
+  return c;
+}
+
+/* ---------- ツールチップ検出 ---------- */
+// 候補のうち、タイプ判定できたものだけを残し、左→上の順で1件採用
+function detect(ctx, W, H) {
+  const d = ctx.getImageData(0, 0, W, H).data;
+  let res;
+  try { res = DetectTooltips.run(d, W, H, {}); } catch (e) { console.error(e); return null; }
+  const c = [];
+  for (const r of res.rects) {
+    let type = null;
+    try {
+      if (EquipmentTooltipChecker.run(d, W, H, r)) type = '装備';
+      else if (ItemTooltipChecker.run(d, W, H, r)) type = 'アイテム';
+    } catch (e) { console.error(e); }
+    if (type) c.push({ x: r.x, y: r.y, w: r.w, h: r.h, type });
+  }
+  c.sort((a, b) => a.x - b.x || a.y - b.y);
+  return c[0] || null;
+}
+
+/* ---------- プレビュー ---------- */
+const view = $('view'), vctx = view.getContext('2d');
+function drawPreview(srcCanvas, hit) {
+  const W = srcCanvas.width, H = srcCanvas.height;
+  if (view.width !== W || view.height !== H) { view.width = W; view.height = H; }
+  vctx.drawImage(srcCanvas, 0, 0);
+  if (hit) {
+    const lw = Math.max(2, Math.round(W / 640));
+    vctx.lineWidth = lw; vctx.strokeStyle = hit.type === '装備' ? '#ff3b30' : '#22c55e';
+    vctx.strokeRect(hit.x - lw / 2, hit.y - lw / 2, hit.w + lw, hit.h + lw);
+    const fs = Math.max(14, Math.round(W / 70));
+    vctx.font = `bold ${fs}px sans-serif`; vctx.textBaseline = 'alphabetic';
+    const tw = vctx.measureText(hit.type).width + 10;
+    let ty = hit.y - lw - 4; let by = ty - fs;
+    if (by < 0) { by = hit.y + lw; ty = by + fs; }
+    vctx.fillStyle = vctx.strokeStyle; vctx.fillRect(hit.x, by - 2, tw, fs + 6);
+    vctx.fillStyle = '#fff'; vctx.fillText(hit.type, hit.x + 5, by + fs - 1);
+  }
+  view.style.display = 'block'; $('viewEmpty').style.display = 'none';
+}
+
+/* ---------- クロップ画像リスト ---------- */
+const items = [];          // 並び順 = マージ順
+let seq = 0;
+const listEl = $('list');
+
+function cropFrom(srcCanvas, hit) {
+  const x = Math.max(0, hit.x), y = Math.max(0, hit.y);
+  const w = Math.min(srcCanvas.width - x, hit.w), h = Math.min(srcCanvas.height - y, hit.h);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(srcCanvas, x, y, w, h, 0, 0, w, h);
+  return c;
+}
+
+function addItem(srcCanvas, hit) {
+  if (items.length >= MAX_ITEMS) { toast(`上限（${MAX_ITEMS}件）に達しています`); return false; }
+  const now = new Date();
+  const it = { id: ++seq, canvas: cropFrom(srcCanvas, hit), type: hit.type, date: now,
+               name: `tooltip_${stamp(now)}_${pad(seq, 3)}.png`, el: null, chk: null, numEl: null };
+  buildRow(it);
+  items.push(it); listEl.appendChild(it.el);
+  onListChanged();
+  return it;
+}
+
+const THUMB_W = 200, THUMB_H = 100;
+const ICON_DL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
+const ICON_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+
+// サムネイルは 50%〜100% で 200×100 の枠に合わせる。50%でも収まらなければはみ出して部分表示
+function applyThumbScale(c) {
+  const k = Math.min(1, Math.max(0.5, Math.min(THUMB_W / c.width, THUMB_H / c.height)));
+  c.style.width = Math.round(c.width * k) + 'px';
+  c.style.height = Math.round(c.height * k) + 'px';
+}
+
+function buildRow(it) {
+  const el = document.createElement('div'); el.className = 'item';
+  const handle = document.createElement('div'); handle.className = 'handle'; handle.textContent = '⋮⋮'; handle.title = 'ドラッグで並べ替え';
+  const body = document.createElement('div'); body.className = 'body';
+  const num = document.createElement('div'); num.className = 'num';
+  const chk = document.createElement('input'); chk.type = 'checkbox'; chk.checked = true;
+  const thumb = document.createElement('div'); thumb.className = 'thumb'; thumb.title = 'クリックで選択／解除';
+  applyThumbScale(it.canvas); thumb.appendChild(it.canvas);
+  const tag = document.createElement('div'); tag.className = 'tag ' + (it.type === '装備' ? 'eq' : 'it'); tag.textContent = it.type;
+  const fn = document.createElement('div'); fn.className = 'fname';
+  fn.innerHTML = `${it.name}`;
+  const acts = document.createElement('div'); acts.className = 'acts';
+  const dl = document.createElement('button'); dl.className = 'btn sub ibtn'; dl.innerHTML = ICON_DL; dl.title = 'ダウンロード'; dl.setAttribute('aria-label', 'ダウンロード');
+  const del = document.createElement('button'); del.className = 'btn danger ibtn'; del.innerHTML = ICON_DEL; del.title = '削除'; del.setAttribute('aria-label', '削除');
+  acts.append(dl, del);
+  body.append(num, chk, thumb, tag, fn, acts);
+  el.append(handle, body);
+  it.el = el; it.chk = chk; it.numEl = num;
+
+  chk.addEventListener('change', () => { refreshInfo(); refreshMergeOptions(); scheduleMerge(); });
+  thumb.addEventListener('click', () => { chk.checked = !chk.checked; chk.dispatchEvent(new Event('change')); });
+  dl.addEventListener('click', async () => {
+    const blob = await toBlob(withWatermark(it.canvas));
+    download(blob, it.name);
+  });
+  del.addEventListener('click', () => {
+    if (!confirm('この画像を削除しますか？')) return;
+    removeItems([it]);
+  });
+  if (window.PointerEvent) handle.addEventListener('pointerdown', e => startDrag(it, e, 'p'));
+  else {   // Pointer Events 非対応の古いブラウザ向け
+    handle.addEventListener('mousedown', e => startDrag(it, e, 'm'));
+    handle.addEventListener('touchstart', e => startDrag(it, e, 't'), { passive: false });
+  }
+}
+
+/* ---------- 並べ替え（つかんで移動 → 離した位置に挿入） ----------
+   要素のDOM移動でポインタキャプチャが外れるため、キャプチャは使わず window で受ける。
+   つかんでいる間は半透明のコピー(ghost)がマウスに追従し、元の行は破線の空き枠として挿入位置に移動する。 */
+let drag = null;
+
+function pointOf(e) { return (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e; }
+
+function updateDrag() {
+  const d = drag; if (!d) return;
+  d.ghost.style.left = (d.x - d.dx) + 'px';
+  d.ghost.style.top = (d.y - d.dy) + 'px';
+  let before = null;
+  for (const r of listEl.children) {
+    if (r === d.el) continue;
+    const b = r.getBoundingClientRect();
+    if (d.y < b.top + b.height / 2) { before = r; break; }
+  }
+  if (before) { if (d.el.nextSibling !== before) listEl.insertBefore(d.el, before); }
+  else if (listEl.lastChild !== d.el) listEl.appendChild(d.el);
+}
+function dragScrollLoop() {
+  const d = drag; if (!d) return;
+  const EDGE = 70; let v = 0;
+  if (d.y < EDGE) v = -Math.ceil((EDGE - d.y) / 4);
+  else if (d.y > innerHeight - EDGE) v = Math.ceil((d.y - (innerHeight - EDGE)) / 4);
+  if (v) { window.scrollBy(0, v); updateDrag(); }
+  d.raf = requestAnimationFrame(dragScrollLoop);
+}
+// 古いFirefoxは pointerId が不正確（pointerdown と pointermove で値が違う）なので、IDでの絞り込みはタッチ操作の複数指のときだけにする
+function otherPointer(d, e) {
+  return d.mode === 'p' && e.pointerType === 'touch' && !!e.pointerId && !!d.id && e.pointerId !== d.id;
+}
+function onDragMove(e) {
+  const d = drag; if (!d) return;
+  if (otherPointer(d, e)) return;
+  if (d.mode === 't') {
+    if (!e.touches || !e.touches.length) return;
+    e.preventDefault();                                  // 並べ替え中はスクロールさせない
+  } else if (e.buttons === 0 && (d.mode === 'm' || e.pointerType === 'mouse')) {
+    endDrag(false); return;                              // 離した通知を取りこぼした場合
+  }
+  const pt = pointOf(e);
+  d.x = pt.clientX; d.y = pt.clientY; updateDrag();
+}
+function onDragUp(e) {
+  const d = drag; if (!d) return;
+  if (otherPointer(d, e)) return;
+  endDrag(true);
+}
+function onDragCancel(e) {
+  const d = drag; if (!d) return;
+  if (otherPointer(d, e)) return;
+  endDrag(false);
+}
+function onDragKey(e) { if (e.key === 'Escape' || e.key === 'Esc') { e.preventDefault(); endDrag(false); } }
+function onDragAbort() { endDrag(false); }                          // ウィンドウ/タブが非アクティブになった
+function onDragVis() { if (document.hidden) endDrag(false); }
+
+function startDrag(it, e, mode) {
+  if (mode !== 't' && e.button !== undefined && e.button !== 0) return;
+  if (mode === 't' && e.touches && e.touches.length > 1) return;
+  if (drag) endDrag(false);
+  e.preventDefault();
+  const pt = pointOf(e);
+  const el = it.el, r = el.getBoundingClientRect();
+  const ghost = el.cloneNode(true);
+  const src = el.querySelector('.thumb canvas'), dst = ghost.querySelector('.thumb canvas');
+  if (src && dst) { dst.width = src.width; dst.height = src.height; dst.getContext('2d').drawImage(src, 0, 0); }
+  const gc = ghost.querySelector('input[type=checkbox]'); if (gc) gc.checked = it.chk.checked;
+  ghost.classList.add('ghost');
+  ghost.style.width = r.width + 'px'; ghost.style.left = r.left + 'px'; ghost.style.top = r.top + 'px';
+  document.body.appendChild(ghost);
+  el.classList.add('ph'); document.body.classList.add('is-dragging');
+  document.documentElement.style.scrollBehavior = 'auto';   // 自動スクロールが smooth だと遅れる
+  const L = [];
+  if (mode === 'p') L.push([window, 'pointermove', onDragMove], [window, 'pointerup', onDragUp], [window, 'pointercancel', onDragCancel]);
+  else if (mode === 'm') L.push([window, 'mousemove', onDragMove], [window, 'mouseup', onDragUp]);
+  else L.push([window, 'touchmove', onDragMove, { passive: false }], [window, 'touchend', onDragUp], [window, 'touchcancel', onDragCancel]);
+  L.push([window, 'keydown', onDragKey, true], [window, 'blur', onDragAbort], [window, 'contextmenu', onDragAbort],
+         [document, 'visibilitychange', onDragVis]);
+  L.forEach(a => a[0].addEventListener(a[1], a[2], a[3]));
+  drag = { it, el, ghost, mode, id: e.pointerId, dx: pt.clientX - r.left, dy: pt.clientY - r.top,
+           x: pt.clientX, y: pt.clientY, next: el.nextSibling, raf: 0, L };
+  drag.raf = requestAnimationFrame(dragScrollLoop);
+}
+
+function endDrag(commit) {
+  const d = drag; if (!d) return;
+  drag = null;
+  cancelAnimationFrame(d.raf);
+  d.L.forEach(a => a[0].removeEventListener(a[1], a[2], a[3]));
+  d.ghost.remove();
+  d.el.classList.remove('ph'); document.body.classList.remove('is-dragging');
+  document.documentElement.style.scrollBehavior = '';
+  if (d.el.parentNode !== listEl) return;                 // 途中で削除された
+  if (!commit) {                                          // 中止：元の位置へ戻す
+    if (d.next && d.next.parentNode === listEl) listEl.insertBefore(d.el, d.next);
+    else listEl.appendChild(d.el);
+  }
+  const order = [...listEl.children];
+  items.sort((a, b) => order.indexOf(a.el) - order.indexOf(b.el));
+  refreshNumbers(); scheduleMerge();
+}
+
+function removeItems(arr) {
+  if (drag && arr.includes(drag.it)) endDrag(false);
+  for (const it of arr) {
+    const i = items.indexOf(it); if (i >= 0) items.splice(i, 1);
+    it.el.remove();
+  }
+  onListChanged();
+}
+
+function refreshNumbers() { items.forEach((it, i) => it.numEl.textContent = i + 1); }
+function selected() { return items.filter(it => it.chk.checked); }
+function refreshInfo() {
+  const n = items.length, s = selected().length;
+  $('cntAll').textContent = n; $('cntSel').textContent = s; $('cntMax').textContent = MAX_ITEMS;
+  $('zipBtn').disabled = s === 0; $('delSel').disabled = s === 0; $('delAll').disabled = n === 0;
+  $('empty').style.display = n ? 'none' : 'block';
+  items.forEach(it => it.el.classList.toggle('off', !it.chk.checked));
+}
+function onListChanged() { refreshNumbers(); refreshInfo(); refreshMergeOptions(); scheduleMerge(); }
+
+/* 一括操作 */
+$('selAll').onclick = () => { items.forEach(it => it.chk.checked = true); refreshInfo(); refreshMergeOptions(); scheduleMerge(); };
+$('selNone').onclick = () => { items.forEach(it => it.chk.checked = false); refreshInfo(); refreshMergeOptions(); scheduleMerge(); };
+$('delAll').onclick = () => {
+  if (!items.length) return;
+  if (confirm(`リストの画像 ${items.length} 件をすべて削除しますか？`)) removeItems([...items]);
+};
+$('delSel').onclick = () => {
+  const s = selected(); if (!s.length) return;
+  if (confirm(`選択した ${s.length} 件を削除しますか？`)) removeItems(s);
+};
+
+/* ---------- ZIP（無圧縮・外部ライブラリ不要） ---------- */
+const crcTable = (() => { const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = crcTable[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  const n = new Date();
+  const dosTime = (n.getHours() << 11) | (n.getMinutes() << 5) | (n.getSeconds() >> 1);
+  const dosDate = ((n.getFullYear() - 1980) << 9) | ((n.getMonth() + 1) << 5) | n.getDate();
+  let offset = 0;
+  for (const f of files) {
+    const nb = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, nb.length, true); lh.setUint16(28, 0, true);
+    parts.push(lh.buffer, nb, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true); ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, nb.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(ch.buffer, nb);
+    offset += 30 + nb.length + size;
+  }
+  let csize = 0; for (const p of central) csize += p.byteLength !== undefined ? p.byteLength : p.length;
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, csize, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+}
+$('zipBtn').onclick = () => {
+  const s = selected(); if (!s.length) return;
+  withBusy('ZIPを作成中…', async () => {
+    const files = [];
+    for (const it of s) {
+      const blob = await toBlob(withWatermark(it.canvas));
+      const data = new Uint8Array(await blob.arrayBuffer());
+      files.push({ name: `${pad(items.indexOf(it) + 1)}_${it.name}`, data });
+    }
+    download(makeZip(files), `tooltips_${stamp()}.zip`);
+  });
+};
+
+/* ---------- マージ ---------- */
+const mergeSel = $('mergeSel'), mergeCanvas = $('mergeCanvas');
+let mergeTimer = 0, lastMerge = null;
+
+function refreshMergeOptions() {
+  const n = selected().length;
+  const prev = mergeSel.value ? mergeSel.value.split(',').map(Number) : null; // [M,N]
+  mergeSel.innerHTML = '';
+  if (n === 0) { mergeSel.disabled = true; return; }
+  mergeSel.disabled = false;
+  const maxM = Math.ceil(Math.sqrt(n));
+  const opts = [];
+  for (let m = 1; m <= maxM; m++) opts.push([m, Math.ceil(n / m)]);
+  for (const [m, c] of opts) {
+    const o = document.createElement('option'); o.value = `${m},${c}`; o.textContent = `縦 ${m} × 横 ${c}`; mergeSel.appendChild(o);
+  }
+  // 以前の選択を引き継ぐ（縦1のときは縦数、それ以外は横数で合わせる）
+  let pick = opts[0];
+  if (prev) {
+    const [pm, pn] = prev;
+    if (pm === 1) pick = opts[0];
+    else {
+      const same = opts.filter(o => o[1] === pn);
+      if (same.length) pick = same.reduce((a, b) => Math.abs(a[0] - pm) <= Math.abs(b[0] - pm) ? a : b);
+      else pick = opts.reduce((a, b) => Math.abs(a[1] - pn) <= Math.abs(b[1] - pn) ? a : b);
+    }
+  }
+  mergeSel.value = `${pick[0]},${pick[1]}`;
+}
+
+function scheduleMerge() {
+  $('mergeBusy').style.display = 'flex';
+  clearTimeout(mergeTimer); mergeTimer = setTimeout(renderMerge, 150);
+}
+function renderMerge() {
+  const s = selected();
+  $('mergeBusy').style.display = 'none';
+  if (!s.length || !mergeSel.value) {
+    mergeCanvas.style.display = 'none'; $('mergeEmpty').style.display = 'block';
+    $('mergeDl').disabled = true; $('mergeInfo').textContent = ''; lastMerge = null; return;
+  }
+  const [M, N] = mergeSel.value.split(',').map(Number);
+  const gap = Math.max(0, parseInt($('mergeGap').value, 10) || 0);
+  const imgs = s.map(it => withWatermark(it.canvas));
+  const colW = new Array(N).fill(0), rowH = new Array(M).fill(0);
+  imgs.forEach((c, i) => { const r = Math.floor(i / N), k = i % N;
+    if (r < M) { colW[k] = Math.max(colW[k], c.width); rowH[r] = Math.max(rowH[r], c.height); } });
+  const W = colW.reduce((a, b) => a + b, 0) + gap * (N - 1);
+  const H = rowH.reduce((a, b) => a + b, 0) + gap * (M - 1);
+  mergeCanvas.width = W; mergeCanvas.height = H;
+  const g = mergeCanvas.getContext('2d');
+  g.fillStyle = $('mergeBg').value; g.fillRect(0, 0, W, H);
+  const xs = [], ys = []; let ax = 0, ay = 0;
+  colW.forEach(w => { xs.push(ax); ax += w + gap; });
+  rowH.forEach(h => { ys.push(ay); ay += h + gap; });
+  imgs.forEach((c, i) => { const r = Math.floor(i / N), k = i % N; if (r < M) g.drawImage(c, xs[k], ys[r]); });
+  mergeCanvas.style.display = 'block'; $('mergeEmpty').style.display = 'none';
+  $('mergeDl').disabled = false; $('mergeInfo').textContent = `${W} × ${H} px（${s.length}枚）`;
+  lastMerge = mergeCanvas;
+}
+['change', 'input'].forEach(ev => {
+  mergeSel.addEventListener('change', scheduleMerge);
+  $('mergeBg').addEventListener(ev, scheduleMerge);
+  $('mergeGap').addEventListener(ev, scheduleMerge);
+  $('wmOn').addEventListener(ev, scheduleMerge);
+  $('wmText').addEventListener(ev, scheduleMerge);
+  $('wmAlpha').addEventListener(ev, scheduleMerge);
+});
+$('mergeDl').onclick = () => {
+  if (!lastMerge) return;
+  withBusy('画像を作成中…', async () => {
+    renderMerge();   // 最新設定で再描画
+    download(await toBlob(mergeCanvas), `merged_${stamp()}.png`);
+  });
+};
+
+/* 設定の保存 */
+try {
+  const sv = JSON.parse(localStorage.getItem('ttcrop') || '{}');
+  if (sv.wmText) $('wmText').value = sv.wmText;
+  if (sv.wmOn) $('wmOn').checked = true;
+  if (sv.wmAlpha) $('wmAlpha').value = sv.wmAlpha;
+  if (sv.bg) $('mergeBg').value = sv.bg;
+} catch (e) {}
+const saveSettings = () => { try { localStorage.setItem('ttcrop', JSON.stringify({
+  wmText: $('wmText').value, wmOn: $('wmOn').checked, wmAlpha: $('wmAlpha').value, bg: $('mergeBg').value })); } catch (e) {} };
+['wmText', 'wmOn', 'wmAlpha', 'mergeBg'].forEach(id => $(id).addEventListener('input', saveSettings));
+
+/* ---------- 画像の取り込み（貼り付け／D&D／ファイル選択） ---------- */
+async function processFiles(blobs) {
+  blobs = blobs.filter(b => b && b.type.startsWith('image/'));
+  if (!blobs.length) return;
+  await withBusy('画像を解析中…', async () => {
+    let added = 0, none = 0, lastIt = null;
+    for (const b of blobs) {
+      let bmp;
+      try { bmp = await createImageBitmap(b); } catch (e) { toast('画像を読み込めませんでした'); continue; }
+      const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(bmp, 0, 0); bmp.close && bmp.close();
+      await nextFrame();
+      const hit = detect(g, c.width, c.height);
+      if (!capturing) {
+        drawPreview(c, hit);
+        $('viewInfo').textContent = hit ? `検出: ${hit.type}（${hit.w}×${hit.h}px）` : 'ツールチップを検出できませんでした';
+      }
+      if (hit) { const it = addItem(c, hit); if (it) { added++; lastIt = it; } else break; } else none++;
+    }
+    if (added) toast(`${added}件追加しました（${items.length}/${MAX_ITEMS}）`, lastIt && lastIt.canvas);
+    else if (none) toast('ツールチップを検出できませんでした');
+  });
+}
+$('dropzone').addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', e => { processFiles([...e.target.files]); e.target.value = ''; });
+document.addEventListener('paste', e => {
+  const files = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/')).map(i => i.getAsFile());
+  if (files.length) { e.preventDefault(); processFiles(files); }
+});
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+document.addEventListener('dragenter', e => { if (hasFiles(e)) { dragDepth++; $('dropCover').classList.add('on'); } });
+document.addEventListener('dragleave', e => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; $('dropCover').classList.remove('on'); } });
+document.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+document.addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; $('dropCover').classList.remove('on');
+  processFiles([...e.dataTransfer.files]);
+});
+
+/* ---------- 画面キャプチャ ---------- */
+const vid = $('vid');
+const live = document.createElement('canvas');
+const lctx = live.getContext('2d', { willReadFrequently: true });
+let capturing = false, stream = null, timer = 0, tickBusy = false, liveHit = null;
+
+async function startCapture() {
+  if (!navigator.mediaDevices?.getDisplayMedia) { toast('このブラウザは画面キャプチャに対応していません'); return; }
+  try { stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }); }
+  catch (e) { return; }
+  vid.srcObject = stream;
+  await vid.play().catch(() => {});
+  capturing = true;
+  stream.getVideoTracks()[0].addEventListener('ended', stopCapture);
+  $('capBtn').textContent = 'キャプチャ停止';
+  $('capState').textContent = 'キャプチャ中 ― スペースキーで撮影';
+  document.activeElement && document.activeElement.blur();
+  timer = setInterval(tick, 100);
+}
+function stopCapture() {
+  clearInterval(timer); capturing = false; liveHit = null;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; vid.srcObject = null;
+  $('capBtn').textContent = 'キャプチャ開始'; $('capState').textContent = '停止中';
+}
+function tick() {
+  if (tickBusy || !vid.videoWidth || vid.readyState < 2) return;
+  tickBusy = true;
+  try {
+    const W = vid.videoWidth, H = vid.videoHeight;
+    if (live.width !== W || live.height !== H) { live.width = W; live.height = H; }
+    lctx.drawImage(vid, 0, 0);
+    liveHit = detect(lctx, W, H);
+    drawPreview(live, liveHit);
+    $('viewInfo').textContent = liveHit ? `検出: ${liveHit.type}（${liveHit.w}×${liveHit.h}px）― スペースキーで追加` : 'ツールチップ未検出';
+  } finally { tickBusy = false; }
+}
+$('capBtn').onclick = () => capturing ? stopCapture() : startCapture();
+
+function isTextField(el) {
+  return el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' ||
+    (el.tagName === 'INPUT' && !['checkbox', 'button', 'color', 'range'].includes(el.type)));
+}
+document.addEventListener('keydown', e => {
+  if (!capturing || (e.code !== 'Space' && e.key !== ' ')) return;
+  if (isTextField(e.target)) return;
+  e.preventDefault();                 // スクロール・ボタン誤動作の防止
+  if (e.repeat) return;
+  if (!liveHit) { toast('ツールチップが検出されていません'); return; }
+  { const it = addItem(live, liveHit); if (it) toast(`追加しました（${items.length}/${MAX_ITEMS}）`, it.canvas); }
+});
+document.addEventListener('keyup', e => {
+  if (capturing && (e.code === 'Space' || e.key === ' ') && !isTextField(e.target)) e.preventDefault();
+});
+
+/* 初期表示 */
+refreshInfo(); refreshMergeOptions(); renderMerge();
+})();
+</script>
+</body>
+</html>
