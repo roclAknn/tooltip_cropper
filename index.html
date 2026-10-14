@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="メイプルストーリー 装備画像切り取りツール。SSや画面キャプチャからツールチップを自動認識して切り取り。1枚の画像にまとめてダウンロードできます">
 <title>ツールチップ自動切り抜きツール</title>
+<script data-goatcounter="https://roclaknn.goatcounter.com/count" async="" src="/lib/goatcounter.js"></script>
+<script src="/tools/detectTooltips.js"></script>
 <style>
 :root{
   --bg:#f4f7fb; --card:#fff; --line:#dbe3ee; --text:#243042; --sub:#6b7a90;
@@ -201,7 +204,6 @@ body.is-dragging *{cursor:grabbing!important}
 <div id="busy"><div class="spin"></div><div id="busyMsg">処理中…</div></div>
 <div id="toast"></div>
 
-<script src="detectTooltips.js"></script>
 <script>
 (() => {
 'use strict';
